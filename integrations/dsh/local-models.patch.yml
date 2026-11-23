@@ -1,0 +1,37 @@
+# 仅模型行加载宿主机 Web 配置；凭据由 DSH 的官方提供器按引用解析。
+- insert:
+    - id: atlas-model-credentials
+      name: '@deepseek-ai/dsh-credentials-local'
+      isolate:
+        credentials: atlas-models
+      config:
+        dshHome: !!js process.env.ATLAS_MODEL_HOME
+- id: agent-default-model
+  config: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs')['agent-default-model']
+- id: llm-deepseek
+  config: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs')['llm-deepseek']
+  disabled: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs').disabled['llm-deepseek']
+  isolate:
+    credentials: atlas-models
+- id: llm-pi-ai
+  config: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs')['llm-pi-ai']
+  disabled: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs').disabled['llm-pi-ai']
+  isolate:
+    credentials: atlas-models
+- id: llm-deepseek-account
+  config: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs')['llm-deepseek-account']
+  disabled: !!js process.getBuiltinModule('module').createRequire(process.env.ATLAS_DSH_CLI)(process.env.ATLAS_PROJECT + '/integrations/dsh/local-models.cjs').disabled['llm-deepseek-account']
+- id: deepseek-account
+  isolate:
+    credentials: atlas-models
+# 原生引导及模型选择会独立查询凭据状态，须与执行模型的适配器看到同一个提供器。
+- id: session-controller
+  isolate:
+    credentials: atlas-models
+- id: settings-controller
+  isolate:
+    credentials: atlas-models
+# 使用已有模型时由原 DSH 管理凭据；Atlas 保留缺少凭据的调用错误和手动设置入口。
+- id: ui-settings-models
+  config:
+    credentialOnboarding: false

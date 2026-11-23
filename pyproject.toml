@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webtest-atlas"
+version = "0.1.0"
+description = "DSH 本地示例后台读取与运行记录"
+requires-python = ">=3.13"
+dependencies = ["mcp==1.30.0", "playwright==1.65.2"]
+
+[project.optional-dependencies]
+test = ["pytest==9.2.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["browser: 通过真实 Chromium 验证页面读取和网络范围"]
