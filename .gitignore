@@ -7,3 +7,12 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# 本机开发规则、规划与 IDE 设置
+/.idea/
+/AGENTS.md
+/docs/PRD.md
+/docs/ARCHITECTURE.md
+/docs/TASKS.md
+/docs/HANDOFF.md
+/docs/UI_DESIGN.md

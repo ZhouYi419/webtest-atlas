@@ -68,7 +68,7 @@ $launch = @{
     ATLAS_PYTHON = $python
 }
 if ($UseLocalModels) {
-    # 由 DSH 自身的官方提供器引用既有本机设置和凭据，Atlas 不解析文件内容。
+    # Atlas 从原 DSH 目录读取模型配置，DSH 官方凭据提供器从该目录解析凭据。
     $modelHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
     $launch['ATLAS_MODEL_HOME'] = (Resolve-Path -LiteralPath $modelHome).Path
     $launch['ATLAS_DSH_CLI'] = $cli

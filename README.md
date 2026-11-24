@@ -28,12 +28,4 @@ docker compose up -d demo
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-回归包含真实 Chromium 读取、越界拦截、历史恢复，以及独立 MCP 进程之间的查询。模型对话的实测范围见 [T001 验收记录](docs/TASKS.md#t001本地-dsh-对话到浏览器结果)。
-
-## 项目文档
-
-- [产品需求](docs/PRD.md)
-- [技术架构](docs/ARCHITECTURE.md)
-- [任务和验收](docs/TASKS.md)
-- [开发交接](docs/HANDOFF.md)
-- [协作规范](AGENTS.md)
+回归包含真实 Chromium 读取、越界拦截、历史恢复，以及独立 MCP 进程之间的查询。
