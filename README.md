@@ -6,7 +6,7 @@ WebTest Atlas 是一个通过 DeepSeek Harness（DSH）对话使用的 Web 功�
 
 ## Windows 本机启动
 
-运行环境为 Python 3.13、Chrome 或 Edge、Docker Compose，以及带 Node.js 的 DSH。已验证的 DSH 版本和模型配置见 [DSH 运行说明](docs/DSH.md)。
+在 PowerShell 7 中启动。运行环境为 Python 3.13、Chrome 或 Edge、Docker Compose，以及带 Node.js 的 DSH。已验证的 DSH 版本和模型配置见 [DSH 运行说明](docs/DSH.md)。
 
 在项目根目录使用 Python 3.13 虚拟环境安装依赖。若尚无虚拟环境，先运行 `py -3.13 -m venv .venv`。
 

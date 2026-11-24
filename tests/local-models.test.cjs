@@ -1,48 +1,45 @@
-// 用 rc.5 自带的解析器和临时 Web 配置验证项目专用模型映射。ATLAS_DSH_CLI 指向该版本的 bin.js。
+// ATLAS_DSH_CLI 指向项目锁定版本的 bin.js，使用该宿主的真实补丁解析器。
 const assert = require('node:assert/strict')
-const { mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } = require('node:fs')
+const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
 
-test('仅把 DeepSeek 官方端点的旧 Flash 选择迁移到项目新模型 ID', () => {
-  const home = mkdtempSync(join(tmpdir(), 'atlas-model-id-'))
-  const settings = join(home, 'settings.yaml')
+test('按宿主默认值、Web profile、主目录的顺序读取静态模型补丁', t => {
+  const home = mkdtempSync(join(tmpdir(), 'atlas-models-'))
   const reader = require.resolve('../integrations/dsh/local-models.cjs')
   const originalHome = process.env.ATLAS_MODEL_HOME
-  const originalBaseUrl = process.env.DEEPSEEK_BASE_URL
   process.env.ATLAS_MODEL_HOME = home
-  delete process.env.DEEPSEEK_BASE_URL
-
-  // 在同一临时目录模拟一次用户配置和一次独立宿主启动，核对读取过程中原件内容保持一致。
-  function select(provider, model, adapter = {}) {
-    const data = JSON.stringify({
-      'agent-default-model': { provider, model, reasoningEffort: 'low' },
-      'llm-deepseek': adapter,
-    })
-    writeFileSync(settings, data)
+  t.after(() => {
     delete require.cache[reader]
-    const selected = require(reader)['agent-default-model']
-    assert.equal(readFileSync(settings, 'utf8'), data)
-    return selected
-  }
-
-  try {
-    assert.deepEqual(select('deepseek-official', 'deepseek-v4-flash'), {
-      provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low',
-    })
-    assert.equal(select('deepseek-official', 'deepseek-v4-pro').model, 'deepseek-v4-pro')
-    assert.equal(select('private-gateway', 'deepseek-v4-flash').model, 'deepseek-v4-flash')
-    const gateway = { baseURL: 'https://gateway.invalid/anthropic' }
-    assert.equal(select('deepseek-official', 'deepseek-v4-flash', gateway).model, 'deepseek-v4-flash')
-    process.env.DEEPSEEK_BASE_URL = gateway.baseURL
-    assert.equal(select('deepseek-official', 'deepseek-v4-flash').model, 'deepseek-v4-flash')
-  } finally {
     if (originalHome === undefined) delete process.env.ATLAS_MODEL_HOME
     else process.env.ATLAS_MODEL_HOME = originalHome
-    if (originalBaseUrl === undefined) delete process.env.DEEPSEEK_BASE_URL
-    else process.env.DEEPSEEK_BASE_URL = originalBaseUrl
-    unlinkSync(settings)
-    rmdirSync(home)
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  // 模拟重启，让每次断言读取刚写入的补丁。
+  function loadModels() {
+    delete require.cache[reader]
+    return require(reader)
   }
+
+  assert.deepEqual(loadModels()['agent-default-model'], {
+    provider: 'deepseek-official', model: 'deepseek-flash',
+  })
+  const web = join(home, 'profiles', 'web')
+  mkdirSync(web, { recursive: true })
+  const selection = { provider: 'private-gateway', model: 'team-model', reasoningEffort: 'low' }
+  writeFileSync(join(web, 'cordis.patch.yml'), JSON.stringify([
+    { id: 'agent-default-model', config: selection },
+    { id: 'llm-pi-ai', disabled: true },
+  ]))
+  assert.deepEqual(loadModels()['agent-default-model'], selection)
+  const shared = join(home, 'cordis.patch.yml')
+  const override = { provider: 'deepseek-official', model: 'deepseek-pro' }
+  writeFileSync(shared, JSON.stringify([{ id: 'agent-default-model', config: override }]))
+  const models = loadModels()
+  assert.deepEqual(models['agent-default-model'], override)
+  assert.equal(models.disabled['llm-pi-ai'], true)
+  writeFileSync(shared, '- id: agent-default-model\n  config: !!js ({})\n')
+  assert.throws(loadModels, /动态 JavaScript 表达式/)
 })

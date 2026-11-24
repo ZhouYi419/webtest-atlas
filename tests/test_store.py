@@ -26,7 +26,7 @@ class StoreTests(unittest.TestCase):
     def test_history_survives_reopen_and_finish_retries(self):
         """不同实例查到相同结果，晚到的回调无法覆写已有证据。"""
         self.assertIsNone(self.store.get("unknown"))
-        run_id = self.store.start()
+        run_id, _ = self.store.begin_read(None)
         self.assertEqual(self.store.get(run_id)["status"], "running")
         self.store.finish(run_id, "read", "已读取。", "示例页", "fixture")
         reopened = Store(self.path)
@@ -40,7 +40,7 @@ class StoreTests(unittest.TestCase):
 
     def test_failed_step_rolls_back_terminal_result(self):
         """写入结束证据出错时终态一并回滚，恢复写入后可重试。"""
-        run_id = self.store.start()
+        run_id, _ = self.store.begin_read(None)
         with closing(sqlite3.connect(self.path)) as db:
             db.execute("""
                 CREATE TRIGGER reject_finish BEFORE INSERT ON steps WHEN NEW.seq = 2
@@ -57,7 +57,7 @@ class StoreTests(unittest.TestCase):
     def test_concurrent_writers_preserve_first_terminal_evidence(self):
         """同时结束同一运行只写一条结束步骤，其他运行可并发创建。"""
         with ThreadPoolExecutor(max_workers=4) as pool:
-            ids = list(pool.map(lambda _: self.store.start(), range(6)))
+            ids = [run_id for run_id, _ in pool.map(self.store.begin_read, [None] * 6)]
             futures = [
                 pool.submit(self.store.finish, ids[0], "error", f"读取失败 {i}")
                 for i in range(6)
@@ -86,20 +86,16 @@ class StoreTests(unittest.TestCase):
         self.assertTrue(should_run)
         self.assertNotEqual(next_run, run_id)
 
-    def test_migration_keeps_older_run_evidence(self):
-        """对无目标键的旧版表增量加列，保留原记录、步骤和运行 ID。"""
-        run_id = self.store.start()
-        self.store.finish(run_id, "read", "旧记录。", "示例页", "fixture")
-        original = self.store.get(run_id)
+    def test_open_requires_current_schema(self):
+        """缺少目标键时打开失败，验证初始化不会改写已有表结构。"""
         with closing(sqlite3.connect(self.path)) as db:
             db.execute("DROP INDEX runs_active_target")
             db.execute("ALTER TABLE runs DROP COLUMN target_key")
-        reopened = Store(self.path)
-        self.assertEqual(reopened.get(run_id), original)
+        with self.assertRaisesRegex(sqlite3.OperationalError, "target_key"):
+            Store(self.path)
         with closing(sqlite3.connect(self.path)) as db:
-            self.assertEqual(db.execute("SELECT target_key FROM runs").fetchall(), [(None,)])
-        _, should_run = reopened.begin_read("http://127.0.0.1:18765/")
-        self.assertTrue(should_run)
+            columns = [row[1] for row in db.execute("PRAGMA table_info(runs)")]
+            self.assertNotIn("target_key", columns)
 
     def test_only_recovers_after_owner_process_has_exited(self):
         """历史查询和同目标重试都保留活进程，进程退出后各自补记中断。"""
@@ -109,7 +105,7 @@ class StoreTests(unittest.TestCase):
             "from pathlib import Path\n"
             "from webtest_atlas.store import Store\n"
             "store = Store(Path(sys.argv[1]))\n"
-            "print(store.start(), flush=True)\n"
+            "print(store.begin_read(None)[0], flush=True)\n"
             "print(store.begin_read(sys.argv[2])[0], flush=True)\n"
             "sys.stdin.read(1)\n"
         )

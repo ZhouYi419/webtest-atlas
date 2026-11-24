@@ -75,7 +75,7 @@ async def read_demo_page(target: str | None = None) -> dict:
         # Playwright 同步驱动须在 DSH 所用的异步事件循环之外运行。
         return await asyncio.to_thread(run_read, target)
     except (sqlite3.Error, OSError):
-        return {"status": "error", "reason": "运行库读写失败。请检查本机数据目录的空间与权限，再查询或重试。"}
+        return {"status": "error", "reason": "无法读写运行库。请核对数据库结构、目录权限与剩余空间后重试。"}
 
 
 @mcp.tool()
@@ -88,7 +88,7 @@ def get_run(run_id: str) -> dict:
     try:
         record = open_store().get(key)
     except (sqlite3.Error, OSError):
-        return {"status": "error", "reason": "运行库读取失败。请检查本机数据目录的空间与权限后再次查询。"}
+        return {"status": "error", "reason": "无法查询运行库。请核对数据库结构、目录权限与剩余空间后重试。"}
     if record is None:
         return {"status": "not_found", "reason": "未找到这次运行。请核对 ID 与项目数据目录。"}
     return record

@@ -101,10 +101,6 @@ class Store:
                     CHECK (status = 'read' OR (title IS NULL AND marker IS NULL))
                 )
             """)
-            # 旧运行没有已知目标。保留为 NULL，不据此合并或重新解释历史。
-            columns = {row["name"] for row in db.execute("PRAGMA table_info(runs)")}
-            if "target_key" not in columns:
-                db.execute("ALTER TABLE runs ADD COLUMN target_key TEXT")
             db.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS runs_active_target ON runs (target_key)
                 WHERE status = 'running' AND target_key IS NOT NULL
@@ -130,11 +126,6 @@ class Store:
             with db:
                 db.execute("BEGIN IMMEDIATE")
                 yield db
-
-    def start(self) -> str:
-        """为不参与合并的请求独立登记运行，并返回随机运行 ID。"""
-        run_id, _ = self.begin_read(None)
-        return run_id
 
     def begin_read(self, target_key: str | None) -> tuple[str, bool]:
         """复用已配置首页的进行中读取，返回运行 ID 和本次是否应实际执行。"""
