@@ -12,7 +12,10 @@ export async function apply(ctx) {
   const scope = await ctx.agentPresets.acquireScope(preset.id)
   try {
     const names = ctx.tools.schemas(scope.key).map(schema => schema.name).sort()
-    const expected = ['mcp__atlas__get_run', 'mcp__atlas__read_demo_page']
+    const expected = [
+      'ask_user_question', 'mcp__atlas__get_run', 'mcp__atlas__login_site',
+      'mcp__atlas__open_site', 'mcp__atlas__read_demo_page', 'mcp__atlas__update_site_address',
+    ]
     if (names.length !== expected.length || names.some((name, index) => name !== expected[index])) {
       throw new Error(`Atlas 工具目录与预期不符，实际装载：${names.join(', ') || '空'}。`)
     }

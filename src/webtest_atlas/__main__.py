@@ -1,7 +1,8 @@
-"""以 MCP stdio 提供示例页读取和跨会话历史查询。"""
+"""通过 DSH 的 MCP 入口读取用户指定的网站、执行已配置的登录及查询运行。"""
 
 import asyncio
 import os
+import re
 import sqlite3
 from pathlib import Path
 from uuid import UUID
@@ -9,7 +10,9 @@ from uuid import UUID
 from mcp.server.fastmcp import FastMCP
 
 from .browser import PageFailure, read_page
-from .store import Store
+from .landing import canonical_entry, read_landing
+from .login import start_login
+from .store import SiteSelectionError, Store
 
 
 mcp = FastMCP("atlas")
@@ -76,6 +79,99 @@ async def read_demo_page(target: str | None = None) -> dict:
         return await asyncio.to_thread(run_read, target)
     except (sqlite3.Error, OSError):
         return {"status": "error", "reason": "无法读写运行库。请核对数据库结构、目录权限与剩余空间后重试。"}
+
+
+def environment_label(value: str | None) -> str | None:
+    """规范化已指明的环境名，保留缺省状态以便从已保存的站点查找候选。"""
+    label = (value or "").strip()
+    if not label:
+        return None
+    if not re.fullmatch(r"[\w\- ]{1,40}", label):
+        raise ValueError("环境名称请使用简短的文字、数字、空格、下划线或连字符。")
+    return label + "环境" if label in {"测试", "生产", "预发", "开发"} else label
+
+
+def checked_site_name(value: str) -> str:
+    """保留用户给的站点名称，拒绝空白名称和疑似网址或凭据的特殊分隔符。"""
+    name = value.strip()
+    if not re.fullmatch(r"[\w][\w .\-]{0,63}", name):
+        raise ValueError("站点名请使用 1 到 64 个文字、数字、空格、点、下划线或连字符。")
+    return name
+
+
+def run_open_site(url: str | None, environment: str | None, site_name: str | None = None) -> dict:
+    """绑定或解析当前部署后领取读取任务，按实际运行时的入口保存页面证据。"""
+    try:
+        label = environment_label(environment)
+        entry = canonical_entry(url) if url is not None else None
+        store = open_store()
+        if site_name is not None:
+            site_name = checked_site_name(site_name)
+            run_id, execute, entry = store.prepare_named_read(site_name, label, entry)
+        elif entry is not None:
+            run_id, execute = store.begin_site_read(entry, label or "未指定")
+        else:
+            return {"status": "blocked", "reason": "请给出网址，或已记住的站点名。"}
+    except SiteSelectionError as exc:
+        return exc.result
+    except (PageFailure, ValueError) as exc:
+        return {"status": "blocked", "reason": str(exc)}
+    if execute:
+        try:
+            page = read_landing(entry)
+        except PageFailure as exc:
+            store.finish(run_id, "error" if exc.code == "browser_error" else "blocked", str(exc))
+        except Exception as exc:
+            # 驱动或解析器的意外错误也要结束本次运行，防止下次重试复用卡住的记录或回显页面原文。
+            store.finish(run_id, "error", f"页面读取意外中断（{type(exc).__name__}）。请重新发起读取。")
+        else:
+            detail = f"Chromium 已打开入口页，HTTP {page['http_status']}。"
+            if page["title"]:
+                detail += f" 页面标题「{page['title']}」。"
+            if page["marker"]:
+                detail += f" 可见标题「{page['marker']}」。"
+            if page["password_field"]:
+                detail += " 页面上有可见的密码输入框。"
+            store.finish(run_id, "read", detail, title=page["title"], marker=page["marker"])
+    result = store.get(run_id)
+    if result is None:
+        raise sqlite3.DatabaseError("无法查回刚登记的运行。")
+    return result
+
+
+@mcp.tool()
+async def open_site(url: str | None = None, environment: str | None = None, site_name: str | None = None) -> dict:
+    """按网址匿名打开首页。用户给站点名时一并记住；按已知名称打开时仅传 site_name，可附 environment。"""
+    try:
+        return await asyncio.to_thread(run_open_site, url, environment, site_name)
+    except (sqlite3.Error, OSError):
+        return {"status": "error", "reason": "站点记录读写失败。请核对本机运行库、目录权限及剩余空间。"}
+
+
+@mcp.tool()
+def update_site_address(site_name: str, url: str, environment: str | None = None) -> dict:
+    """用户明确要求改地址时更新已记住的公开入口，返回原地址与新地址。未点明环境时省略 environment。"""
+    try:
+        name = checked_site_name(site_name)
+        label = environment_label(environment)
+        entry = canonical_entry(url)
+        return open_store().update_site_address(name, label, entry)
+    except SiteSelectionError as exc:
+        return exc.result
+    except (PageFailure, ValueError) as exc:
+        return {"status": "blocked", "reason": str(exc)}
+    except (sqlite3.Error, OSError):
+        return {"status": "error", "reason": "站点地址更新失败。请核对本机运行库、目录权限及剩余空间。"}
+
+
+@mcp.tool()
+async def login_site() -> dict:
+    """登录本机配置的测试站并验证账号。人工挑战在 Chromium 中完成，按返回的运行 ID 查询进度。"""
+    try:
+        store = open_store()
+        return await asyncio.to_thread(start_login, store)
+    except (sqlite3.Error, OSError, RuntimeError):
+        return {"status": "error", "reason": "无法启动登录任务。请核对本机环境、运行库与目录权限后重试。"}
 
 
 @mcp.tool()
